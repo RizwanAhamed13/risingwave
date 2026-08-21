@@ -1,8 +1,8 @@
 diff --git a/src/meta/src/rpc/ddl_controller.rs b/src/meta/src/rpc/ddl_controller.rs
-index a41e2d5..a65ff91 100644
+index a41e2d5..8fc80d6 100644
 --- a/src/meta/src/rpc/ddl_controller.rs
 +++ b/src/meta/src/rpc/ddl_controller.rs
-@@ -2827,6 +2827,126 @@ mod tests {
+@@ -2827,6 +2827,127 @@ mod tests {
  
      use super::*;
  
@@ -97,7 +97,8 @@ index a41e2d5..a65ff91 100644
 +        .await
 +        .unwrap();
 +        waiter.abort();
-+        assert!(waiter.await.unwrap_err().is_cancelled());
++        let result = waiter.await;
++        assert!(matches!(result, Err(err) if err.is_cancelled()));
 +        assert_eq!(admission.stats().waiting, 0);
 +        assert_eq!(admission.stats().active, 1);
 +    }
