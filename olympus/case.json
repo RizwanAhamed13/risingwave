@@ -1,0 +1,9 @@
+{
+  "repository": "risingwavelabs/risingwave",
+  "issue": 26763,
+  "base_commit": "1e054a812810c2c808de8fbaa01644ebd9c9afc8",
+  "language": "Rust",
+  "license": "Apache-2.0",
+  "claim": "full-lifecycle streaming backfill admission",
+  "scope_gate": "intentionally skipped by user instruction"
+}
