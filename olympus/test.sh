@@ -2,7 +2,11 @@
 set -euo pipefail
 output_file="$(mktemp)"
 trap 'rm -f "$output_file"' EXIT
-cargo test -p risingwave_meta --lib rpc::ddl_controller::tests::test_creation_admission -- --nocapture 2>&1 | tee "$output_file"
+if [[ -x /opt/risingwave-meta-tests ]]; then
+  /opt/risingwave-meta-tests rpc::ddl_controller::tests::test_creation_admission --nocapture 2>&1 | tee "$output_file"
+else
+  cargo test -p risingwave_meta --lib rpc::ddl_controller::tests::test_creation_admission -- --nocapture 2>&1 | tee "$output_file"
+fi
 grep -Eq "test result: ok\. 7 passed; 0 failed" "$output_file"
 python3 - <<'PY'
 from pathlib import Path
