@@ -1,0 +1,37 @@
+name: Olympus Remote Harness
+
+on:
+  workflow_dispatch:
+    inputs:
+      script_b64:
+        description: Base64-encoded remote task
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  remote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          persist-credentials: false
+      - name: Run remote task
+        env:
+          OLYMPUS_SCRIPT_B64: ${{ inputs.script_b64 }}
+        run: |
+          printf "%s" "$OLYMPUS_SCRIPT_B64" | base64 --decode > /tmp/olympus-remote.sh
+          chmod 700 /tmp/olympus-remote.sh
+          /tmp/olympus-remote.sh
+      - name: Upload task output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: olympus-output-${{ github.run_id }}
+          path: olympus-output/**
+          if-no-files-found: ignore
+          retention-days: 7
