@@ -1,6 +1,6 @@
 FROM public.ecr.aws/d3j8x8q7/olympus-base-rust:latest
 WORKDIR /workspace/risingwave
-RUN apt-get update && apt-get install -y --no-install-recommends protobuf-compiler libopenblas-dev liblapack-dev libsasl2-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends cmake pkg-config protobuf-compiler libopenblas-dev liblapack-dev libsasl2-dev && rm -rf /var/lib/apt/lists/*
 RUN rustup component add rustfmt
 COPY . .
 ENV CARGO_INCREMENTAL=0 CARGO_PROFILE_TEST_DEBUG=0
