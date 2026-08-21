@@ -13,3 +13,7 @@ RisingWave limits concurrent streaming-job creation, but background and serverle
 - Expose deterministic state for observability: configured limit, active ownership, tracked creating jobs, and waiting admissions. Emit useful lifecycle logs for waits, acquisition, recovery, release, and limit changes.
 
 Do not add timing-based admission behavior or weaken existing foreground creation semantics.
+
+## Validation surface
+
+Keep the existing `CreatingStreamingJobPermit` type usable by its module tests with deterministic limit, acquisition, recovery-claim, release, and stats operations. Use `CreatingStreamingJobInfo::take_permit` to transfer a background job ownership and `GlobalStreamManager::track_creating_job_permit` to retain it through terminal catalog observation; these crate-internal hooks are part of this challenge validation surface.
