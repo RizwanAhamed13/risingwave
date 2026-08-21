@@ -12,17 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering as AtomicOrdering};
 use std::time::Duration;
 
 use anyhow::{Context, anyhow};
 use await_tree::InstrumentAwait;
 use either::Either;
 use itertools::Itertools;
+use parking_lot::Mutex as ParkingLotMutex;
 use risingwave_common::catalog::{
     AlterDatabaseParam, ColumnCatalog, ColumnId, Field, FragmentTypeFlag,
 };
@@ -66,7 +66,7 @@ use risingwave_pb::stream_plan::{
 use risingwave_pb::telemetry::{PbTelemetryDatabaseObject, PbTelemetryEventStage};
 use strum::Display;
 use thiserror_ext::AsReport;
-use tokio::sync::Semaphore;
+use tokio::sync::Notify;
 use tokio::time::sleep;
 use tracing::Instrument;
 
@@ -297,65 +297,253 @@ pub struct DdlController {
     seq: Arc<AtomicU64>,
 }
 
-#[derive(Clone)]
+#[derive(Debug)]
+struct CreatingStreamingJobPermitState {
+    limit: usize,
+    active: usize,
+    tracked_jobs: HashSet<JobId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CreatingStreamingJobPermitStats {
+    pub limit: usize,
+    pub active: usize,
+    pub tracked_jobs: usize,
+    pub waiting: usize,
+}
+
+/// Admission control for streaming-job creation.
+///
+/// Unlike a semaphore, this type can reconstruct already-active jobs after a meta restart and can
+/// reduce its limit below current usage without losing the reduction. Existing jobs are never
+/// evicted; new admissions stay blocked until active usage drops below the new limit.
 pub struct CreatingStreamingJobPermit {
-    pub(crate) semaphore: Arc<Semaphore>,
+    state: ParkingLotMutex<CreatingStreamingJobPermitState>,
+    notify: Notify,
+    waiting: AtomicUsize,
+}
+
+pub(crate) struct CreatingStreamingJobPermitGuard {
+    owner: Arc<CreatingStreamingJobPermit>,
+    job_id: Option<JobId>,
+}
+
+struct CreatingStreamingJobPermitWaiter {
+    owner: Arc<CreatingStreamingJobPermit>,
+}
+
+impl Drop for CreatingStreamingJobPermitWaiter {
+    fn drop(&mut self) {
+        self.owner.waiting.fetch_sub(1, AtomicOrdering::Relaxed);
+    }
+}
+
+impl Drop for CreatingStreamingJobPermitGuard {
+    fn drop(&mut self) {
+        self.owner.release(self.job_id);
+    }
 }
 
 impl CreatingStreamingJobPermit {
-    async fn new(env: &MetaSrvEnv) -> Self {
-        let mut permits = env
+    fn normalize_limit(limit: usize) -> usize {
+        if limit == 0 { usize::MAX } else { limit }
+    }
+
+    fn with_limit(limit: usize) -> Self {
+        Self {
+            state: ParkingLotMutex::new(CreatingStreamingJobPermitState {
+                limit: Self::normalize_limit(limit),
+                active: 0,
+                tracked_jobs: HashSet::new(),
+            }),
+            notify: Notify::new(),
+            waiting: AtomicUsize::new(0),
+        }
+    }
+
+    async fn new(env: &MetaSrvEnv) -> Arc<Self> {
+        let initial_limit = env
             .system_params_reader()
             .await
             .max_concurrent_creating_streaming_jobs() as usize;
-        if permits == 0 {
-            // if the system parameter is set to zero, use the max permitted value.
-            permits = Semaphore::MAX_PERMITS;
-        }
-        let semaphore = Arc::new(Semaphore::new(permits));
+        let admission = Arc::new(Self::with_limit(initial_limit));
 
         let (local_notification_tx, mut local_notification_rx) =
             tokio::sync::mpsc::unbounded_channel();
         env.notification_manager()
             .insert_local_sender(local_notification_tx);
-        let semaphore_clone = semaphore.clone();
+        let admission_clone = admission.clone();
         tokio::spawn(async move {
             while let Some(notification) = local_notification_rx.recv().await {
                 let LocalNotification::SystemParamsChange(p) = &notification else {
                     continue;
                 };
-                let mut new_permits = p.max_concurrent_creating_streaming_jobs() as usize;
-                if new_permits == 0 {
-                    new_permits = Semaphore::MAX_PERMITS;
-                }
-                match permits.cmp(&new_permits) {
-                    Ordering::Less => {
-                        semaphore_clone.add_permits(new_permits - permits);
-                    }
-                    Ordering::Equal => continue,
-                    Ordering::Greater => {
-                        let to_release = permits - new_permits;
-                        let reduced = semaphore_clone.forget_permits(to_release);
-                        // TODO: implement dynamic semaphore with limits by ourself.
-                        if reduced != to_release {
-                            tracing::warn!(
-                                "no enough permits to release, expected {}, but reduced {}",
-                                to_release,
-                                reduced
-                            );
-                        }
-                    }
-                }
-                tracing::info!(
-                    "max_concurrent_creating_streaming_jobs changed from {} to {}",
-                    permits,
-                    new_permits
-                );
-                permits = new_permits;
+                admission_clone.set_limit(p.max_concurrent_creating_streaming_jobs() as usize);
             }
         });
 
-        Self { semaphore }
+        admission
+    }
+
+    fn set_limit(&self, limit: usize) {
+        let new_limit = Self::normalize_limit(limit);
+        let (old_limit, active) = {
+            let mut state = self.state.lock();
+            let old_limit = state.limit;
+            state.limit = new_limit;
+            (old_limit, state.active)
+        };
+        tracing::info!(
+            old_limit,
+            new_limit,
+            active,
+            "max_concurrent_creating_streaming_jobs changed"
+        );
+        self.notify.notify_waiters();
+    }
+
+    pub(crate) fn stats(&self) -> CreatingStreamingJobPermitStats {
+        let state = self.state.lock();
+        CreatingStreamingJobPermitStats {
+            limit: state.limit,
+            active: state.active,
+            tracked_jobs: state.tracked_jobs.len(),
+            waiting: self.waiting.load(AtomicOrdering::Relaxed),
+        }
+    }
+
+    fn try_acquire_inner(
+        self: &Arc<Self>,
+        job_id: Option<JobId>,
+    ) -> Option<CreatingStreamingJobPermitGuard> {
+        let mut state = self.state.lock();
+        if let Some(job_id) = job_id {
+            assert!(
+                !state.tracked_jobs.contains(&job_id),
+                "streaming job {job_id} already owns creation admission"
+            );
+        }
+        if state.active >= state.limit {
+            return None;
+        }
+        state.active += 1;
+        if let Some(job_id) = job_id {
+            assert!(state.tracked_jobs.insert(job_id));
+        }
+        Some(CreatingStreamingJobPermitGuard {
+            owner: self.clone(),
+            job_id,
+        })
+    }
+
+    pub(crate) fn try_acquire_job(
+        self: &Arc<Self>,
+        job_id: JobId,
+    ) -> Option<CreatingStreamingJobPermitGuard> {
+        self.try_acquire_inner(Some(job_id))
+    }
+
+    async fn acquire_inner(
+        self: &Arc<Self>,
+        job_id: Option<JobId>,
+    ) -> CreatingStreamingJobPermitGuard {
+        if let Some(permit) = self.try_acquire_inner(job_id) {
+            return permit;
+        }
+
+        self.waiting.fetch_add(1, AtomicOrdering::Relaxed);
+        let _waiter = CreatingStreamingJobPermitWaiter {
+            owner: self.clone(),
+        };
+        let stats = self.stats();
+        tracing::info!(
+            ?job_id,
+            active = stats.active,
+            limit = stats.limit,
+            waiting = stats.waiting,
+            "streaming job waiting for creation admission"
+        );
+
+        loop {
+            // Register before checking state so a release between the check and await cannot be
+            // missed.
+            let notified = self.notify.notified();
+            if let Some(permit) = self.try_acquire_inner(job_id) {
+                let stats = self.stats();
+                tracing::info!(
+                    ?job_id,
+                    active = stats.active,
+                    limit = stats.limit,
+                    waiting = stats.waiting,
+                    "streaming job acquired creation admission"
+                );
+                return permit;
+            }
+            notified.await;
+        }
+    }
+
+    pub(crate) async fn acquire_job(
+        self: &Arc<Self>,
+        job_id: JobId,
+    ) -> CreatingStreamingJobPermitGuard {
+        self.acquire_inner(Some(job_id)).await
+    }
+
+    async fn acquire_anonymous(self: &Arc<Self>) -> CreatingStreamingJobPermitGuard {
+        self.acquire_inner(None).await
+    }
+
+    /// Accounts for a job restored from the catalog before new DDL requests are admitted. The
+    /// restored set is allowed to exceed the configured limit; this is the same drain-only
+    /// behavior used when a live limit is reduced below current usage.
+    pub(crate) fn claim_recovered(
+        self: &Arc<Self>,
+        job_id: JobId,
+    ) -> CreatingStreamingJobPermitGuard {
+        let mut state = self.state.lock();
+        assert!(
+            state.tracked_jobs.insert(job_id),
+            "recovered streaming job {job_id} was claimed twice"
+        );
+        state.active += 1;
+        let active = state.active;
+        let limit = state.limit;
+        drop(state);
+        tracing::info!(
+            %job_id,
+            active,
+            limit,
+            "restored creation admission for recovered streaming job"
+        );
+        CreatingStreamingJobPermitGuard {
+            owner: self.clone(),
+            job_id: Some(job_id),
+        }
+    }
+
+    fn release(&self, job_id: Option<JobId>) {
+        let mut state = self.state.lock();
+        if let Some(job_id) = job_id {
+            assert!(
+                state.tracked_jobs.remove(&job_id),
+                "streaming job {job_id} released creation admission twice"
+            );
+        }
+        state.active = state
+            .active
+            .checked_sub(1)
+            .expect("creation admission active count underflow");
+        let active = state.active;
+        let limit = state.limit;
+        drop(state);
+        tracing::info!(
+            ?job_id,
+            active,
+            limit,
+            "released streaming job creation admission"
+        );
+        self.notify.notify_waiters();
     }
 }
 
@@ -413,7 +601,57 @@ impl DdlController {
         iceberg_compaction_manager: IcebergCompactionManagerRef,
         iceberg_pk_index_sink_manager: IcebergPkIndexSinkManager,
     ) -> Self {
-        let creating_streaming_job_permits = Arc::new(CreatingStreamingJobPermit::new(&env).await);
+        let creating_streaming_job_permits = CreatingStreamingJobPermit::new(&env).await;
+
+        // Reconstruct lifecycle ownership before exposing the DDL service. A recovered job may
+        // take usage above the configured limit; new admissions then remain blocked until enough
+        // recovered jobs reach a terminal catalog state.
+        let recovered_jobs = loop {
+            let jobs = match metadata_manager
+                .catalog_controller
+                .list_creating_jobs(false, None)
+                .await
+            {
+                Ok(jobs) => jobs,
+                Err(err) => {
+                    tracing::warn!(
+                        error = %err.as_report(),
+                        "failed to load creating jobs for admission recovery; retrying"
+                    );
+                    sleep(Duration::from_millis(100)).await;
+                    continue;
+                }
+            };
+            let mut recovered = Vec::with_capacity(jobs.len());
+            let mut failed = None;
+            for (job_id, _, _, _, _) in jobs {
+                match metadata_manager
+                    .catalog_controller
+                    .get_object_database_id(job_id)
+                    .await
+                {
+                    Ok(database_id) => recovered.push((database_id, job_id)),
+                    Err(err) => {
+                        failed = Some(err);
+                        break;
+                    }
+                }
+            }
+            if let Some(err) = failed {
+                tracing::warn!(
+                    error = %err.as_report(),
+                    "failed to resolve recovered creating job; retrying"
+                );
+                sleep(Duration::from_millis(100)).await;
+                continue;
+            }
+            break recovered;
+        };
+        for (database_id, job_id) in recovered_jobs {
+            let permit = creating_streaming_job_permits.claim_recovered(job_id);
+            stream_manager.track_creating_job_permit(database_id, job_id, permit);
+        }
+
         Self {
             env,
             metadata_manager,
@@ -896,10 +1134,9 @@ impl DdlController {
         tracing::debug!("create subscription");
         let _permit = self
             .creating_streaming_job_permits
-            .semaphore
-            .acquire()
-            .await
-            .unwrap();
+            .clone()
+            .acquire_anonymous()
+            .await;
         let _reschedule_job_lock = self.stream_manager.reschedule_lock_read_guard().await;
         self.metadata_manager
             .catalog_controller
@@ -1197,15 +1434,12 @@ impl DdlController {
                 "starting streaming job",
             );
         }
-        // TODO: acquire permits for recovered background DDLs.
         let permit = self
             .creating_streaming_job_permits
-            .semaphore
             .clone()
-            .acquire_owned()
+            .acquire_job(job_id)
             .instrument_await("acquire_creating_streaming_job_permit")
-            .await
-            .unwrap();
+            .await;
         let reschedule_job_lock = self.stream_manager.reschedule_lock_read_guard().await;
 
         let name = streaming_job.name();
@@ -2592,6 +2826,74 @@ mod tests {
     use std::num::NonZeroUsize;
 
     use super::*;
+
+    #[test]
+    fn test_creation_admission_limit_reduction_is_drain_only() {
+        let admission = Arc::new(CreatingStreamingJobPermit::with_limit(2));
+        let first = admission.try_acquire_job(JobId::new(1)).unwrap();
+        let second = admission.try_acquire_job(JobId::new(2)).unwrap();
+        assert_eq!(
+            admission.stats(),
+            CreatingStreamingJobPermitStats {
+                limit: 2,
+                active: 2,
+                tracked_jobs: 2,
+                waiting: 0,
+            }
+        );
+
+        admission.set_limit(1);
+        assert!(admission.try_acquire_job(JobId::new(3)).is_none());
+        drop(first);
+        assert!(admission.try_acquire_job(JobId::new(3)).is_none());
+        drop(second);
+
+        let third = admission.try_acquire_job(JobId::new(3)).unwrap();
+        assert_eq!(admission.stats().active, 1);
+        drop(third);
+        assert_eq!(admission.stats().active, 0);
+    }
+
+    #[test]
+    fn test_creation_admission_recovery_can_start_over_limit() {
+        let admission = Arc::new(CreatingStreamingJobPermit::with_limit(1));
+        let first = admission.claim_recovered(JobId::new(10));
+        let second = admission.claim_recovered(JobId::new(11));
+
+        assert_eq!(
+            admission.stats(),
+            CreatingStreamingJobPermitStats {
+                limit: 1,
+                active: 2,
+                tracked_jobs: 2,
+                waiting: 0,
+            }
+        );
+        assert!(admission.try_acquire_job(JobId::new(12)).is_none());
+        drop(first);
+        assert!(admission.try_acquire_job(JobId::new(12)).is_none());
+        drop(second);
+        assert!(admission.try_acquire_job(JobId::new(12)).is_some());
+    }
+
+    #[tokio::test]
+    async fn test_creation_admission_reports_waiters_and_wakes_on_release() {
+        let admission = Arc::new(CreatingStreamingJobPermit::with_limit(1));
+        let first = admission.acquire_job(JobId::new(20)).await;
+
+        let waiting_admission = admission.clone();
+        let waiter =
+            tokio::spawn(async move { waiting_admission.acquire_job(JobId::new(21)).await });
+        tokio::task::yield_now().await;
+        assert_eq!(admission.stats().waiting, 1);
+        assert_eq!(admission.stats().active, 1);
+
+        drop(first);
+        let second = waiter.await.unwrap();
+        assert_eq!(admission.stats().waiting, 0);
+        assert_eq!(admission.stats().active, 1);
+        drop(second);
+    }
 
     #[test]
     fn test_validate_specified_parallelism_accepts_within_max() {

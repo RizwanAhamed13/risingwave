@@ -36,8 +36,8 @@ use risingwave_pb::serverless_backfill_controller::{
 use risingwave_rpc_client::error::TonicStatusWrapper;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QuerySelect};
 use thiserror_ext::AsReport;
-use tokio::sync::{Mutex, OwnedSemaphorePermit, RwLockReadGuard, oneshot};
-use tokio::time::{Duration, Instant};
+use tokio::sync::{Mutex, RwLockReadGuard, oneshot};
+use tokio::time::{Duration, Instant, sleep};
 use tracing::Instrument;
 
 use super::{
@@ -61,6 +61,7 @@ use crate::model::{
     FragmentReplaceUpstream, StreamActor, StreamContext, StreamJobFragments,
     StreamJobFragmentsToCreate, SubscriptionId,
 };
+use crate::rpc::ddl_controller::CreatingStreamingJobPermitGuard;
 use crate::stream::{ReplaceJobSplitPlan, SourceManagerRef};
 use crate::{MetaError, MetaResult};
 
@@ -170,19 +171,19 @@ pub struct CreateStreamingJobContext {
 struct StreamingJobExecution {
     id: JobId,
     shutdown_tx: Option<oneshot::Sender<oneshot::Sender<bool>>>,
-    _permit: OwnedSemaphorePermit,
+    permit: Option<CreatingStreamingJobPermitGuard>,
 }
 
 impl StreamingJobExecution {
     fn new(
         id: JobId,
         shutdown_tx: oneshot::Sender<oneshot::Sender<bool>>,
-        permit: OwnedSemaphorePermit,
+        permit: CreatingStreamingJobPermitGuard,
     ) -> Self {
         Self {
             id,
             shutdown_tx: Some(shutdown_tx),
-            _permit: permit,
+            permit: Some(permit),
         }
     }
 }
@@ -201,6 +202,11 @@ impl CreatingStreamingJobInfo {
     async fn delete_job(&self, job_id: JobId) {
         let mut jobs = self.streaming_jobs.lock().await;
         jobs.remove(&job_id);
+    }
+
+    async fn take_permit(&self, job_id: JobId) -> Option<CreatingStreamingJobPermitGuard> {
+        let mut jobs = self.streaming_jobs.lock().await;
+        jobs.get_mut(&job_id).and_then(|job| job.permit.take())
     }
 
     async fn cancel_jobs(
@@ -377,7 +383,7 @@ impl GlobalStreamManager {
         self: &Arc<Self>,
         stream_job_fragments: StreamJobFragmentsToCreate,
         ctx: CreateStreamingJobContext,
-        permit: OwnedSemaphorePermit,
+        permit: CreatingStreamingJobPermitGuard,
         reschedule_job_lock: RwLockReadGuard<'_, ()>,
     ) -> CreateStreamingJobResult {
         let await_tree_key = format!("Create Streaming Job Worker ({})", ctx.streaming_job.id());
@@ -407,6 +413,13 @@ impl GlobalStreamManager {
             drop(reschedule_job_lock);
             let version = match create_type {
                 CreateType::Background => {
+                    let permit = stream_manager
+                        .creating_job_info
+                        .take_permit(job_id)
+                        .await
+                        .expect("background creating job must own admission");
+                    stream_manager
+                        .track_creating_job_permit(database_id, job_id, permit);
                     stream_manager
                         .metadata_manager
                         .catalog_controller
@@ -531,6 +544,39 @@ impl GlobalStreamManager {
         tracing::debug!("cleaning creating job info: {}", job_id);
         self.creating_job_info.delete_job(job_id).await;
         result
+    }
+
+    /// Retains creation admission until the catalog reaches a terminal state. Finish-notifier
+    /// errors can be produced by barrier recovery and are transient; re-register instead of
+    /// releasing capacity. Cancellation and drop are observed on the next registration as a
+    /// missing catalog job.
+    pub(crate) fn track_creating_job_permit(
+        &self,
+        database_id: DatabaseId,
+        job_id: JobId,
+        permit: CreatingStreamingJobPermitGuard,
+    ) {
+        let metadata_manager = self.metadata_manager.clone();
+        tokio::spawn(async move {
+            loop {
+                match metadata_manager
+                    .wait_streaming_job_finished(database_id, job_id)
+                    .await
+                {
+                    Ok(_) => break,
+                    Err(err) if err.is_catalog_id_not_found("streaming job") => break,
+                    Err(err) => {
+                        tracing::warn!(
+                            %job_id,
+                            error = %err.as_report(),
+                            "creation admission retained after transient finish notification failure"
+                        );
+                        sleep(Duration::from_millis(100)).await;
+                    }
+                }
+            }
+            drop(permit);
+        });
     }
 
     async fn provision_serverless_backfill_resource_group(&self) -> MetaResult<String> {
