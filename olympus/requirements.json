@@ -1,0 +1,57 @@
+{
+  "artifact_set_id": "a595f702d9b20654d98a67fd68389c21cf8e6439576725e8ac29aef5e41bbc93",
+  "requirements": [
+    {
+      "id": "R1",
+      "behavior": "shared admission before provisioning",
+      "tests": [
+        "test_creation_admission_anonymous_and_job_share_capacity"
+      ]
+    },
+    {
+      "id": "R2",
+      "behavior": "background ownership survives RPC return",
+      "tests": [
+        "test_creation_admission_background_ownership_is_transferred"
+      ]
+    },
+    {
+      "id": "R3",
+      "behavior": "transient notifier errors retain ownership",
+      "tests": [
+        "test_creation_admission_tracker_retries_transient_errors"
+      ]
+    },
+    {
+      "id": "R4",
+      "behavior": "startup reconstructs creating jobs",
+      "tests": [
+        "test_creation_admission_recovery_can_start_over_limit",
+        "test_creation_admission_startup_claims_catalog_jobs"
+      ]
+    },
+    {
+      "id": "R5",
+      "behavior": "runtime limits wake or drain correctly",
+      "tests": [
+        "test_creation_admission_limit_reduction_is_drain_only",
+        "test_creation_admission_limit_increase_wakes_waiter",
+        "test_creation_admission_zero_limit_means_unlimited"
+      ]
+    },
+    {
+      "id": "R6",
+      "behavior": "waiter cancellation does not leak",
+      "tests": [
+        "test_creation_admission_cancelled_waiter_is_not_leaked"
+      ]
+    },
+    {
+      "id": "R7",
+      "behavior": "deterministic counters",
+      "tests": [
+        "test_creation_admission_reports_waiters_and_wakes_on_release"
+      ]
+    }
+  ]
+}

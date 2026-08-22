@@ -1,9 +1,33 @@
 {
-  "repository": "risingwavelabs/risingwave",
-  "issue": 26763,
-  "base_commit": "1e054a812810c2c808de8fbaa01644ebd9c9afc8",
-  "language": "Rust",
-  "license": "Apache-2.0",
-  "claim": "full-lifecycle streaming backfill admission",
-  "scope_gate": "intentionally skipped by user instruction"
+  "schema_version": 1,
+  "case_id": "risingwave-full-lifecycle-backfill-admission",
+  "mode": "REVIEW",
+  "stage": 16,
+  "verdict": "IN_PROGRESS",
+  "next_legal_stage": 11,
+  "repository": {
+    "url": "https://github.com/risingwavelabs/risingwave",
+    "issue": 26763,
+    "commit": "1e054a812810c2c808de8fbaa01644ebd9c9afc8",
+    "license": "Apache-2.0"
+  },
+  "canonical_artifact_directory": "olympus",
+  "artifact_hashes": {
+    "problem.md": "d8b218bdedb9107000d12e499f74fa893721bd722393ac5a063cf12ece5f2f49",
+    "test.patch": "2094b3365cfe943c0f2a6091ea8659bd30eebc0f3144cbefb346ba0c78494b33",
+    "solution.patch": "ad024e26db13ebc62e56617ee06cec74aeb058db5d75d31c960d4509c9854b33",
+    "Dockerfile": "abf3b6fb8a26c40e1e163f17e1264ec4f6013f092129860396c5d0295285005c"
+  },
+  "artifact_set_id": "a595f702d9b20654d98a67fd68389c21cf8e6439576725e8ac29aef5e41bbc93",
+  "scope_gate": "skipped under prior explicit user instruction; no hosted PASS claimed",
+  "proofs": [],
+  "stale_proofs": [
+    {
+      "name": "all-prior-cloud-proofs",
+      "reason": "runner, test patch, prompt, and Dockerfile changed",
+      "refresh": "rerun complete remote matrix"
+    }
+  ],
+  "open_item_count": 1,
+  "last_blocker": "full repaired-byte verification pending"
 }

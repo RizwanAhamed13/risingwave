@@ -1,0 +1,11 @@
+{
+  "artifact_set_id": "a595f702d9b20654d98a67fd68389c21cf8e6439576725e8ac29aef5e41bbc93",
+  "items": [
+    {
+      "id": "OPEN-1",
+      "severity": "blocking",
+      "summary": "repaired-byte remote validation and grader loop pending",
+      "status": "open"
+    }
+  ]
+}

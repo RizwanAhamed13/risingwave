@@ -1,31 +1,24 @@
 {
+  "artifact_set_id": "a595f702d9b20654d98a67fd68389c21cf8e6439576725e8ac29aef5e41bbc93",
   "candidate": {
     "repository": "risingwavelabs/risingwave",
     "issue": 26763,
-    "base_commit": "1e054a812810c2c808de8fbaa01644ebd9c9afc8",
-    "reference_source_commit": "d32968231851",
-    "production_changes": {"additions": 337, "deletions": 57, "files": 2}
+    "base_commit": "1e054a812810c2c808de8fbaa01644ebd9c9afc8"
   },
-  "remote_runs": {
-    "reference_check_and_tests": 32522505548,
-    "hidden_matrix_and_flake_runs": 32525359934,
-    "integration_mutation_probes": 32526490155,
-    "docker_build_and_offline_test": 32529062682
-  },
-  "results": {
-    "reference_hidden_tests": "7 passed",
-    "repeat_runs": 5,
-    "test_only_base": "failed as expected (status 101)",
-    "mutations_rejected": ["early background release", "transient notifier release", "recovery omission"],
-    "docker": "build passed; --network none runtime passed",
-    "docker_image": "sha256:87ce9ab068107b34bfd258fb47e70b42f84075d49b7b2edff43448f69a42295f",
-    "docker_image_size_bytes": 2773680662,
-    "resolved_base_image_digest_evidence_only": "sha256:211a2e3aeff24b410f2c982723e9314992833f4633c764217eab87552f1d1477"
-  },
-  "gates": {
-    "scope_gate": "intentionally skipped by explicit user instruction",
-    "paid_checks": "not run",
-    "rollouts": "not run",
-    "auto_review": "not run"
-  }
+  "current_proofs": [],
+  "stale_remote_runs": [
+    32522505548,
+    32525359934,
+    32526490155,
+    32529062682
+  ],
+  "remaining": [
+    "clean patch application",
+    "four-state JUnit matrix",
+    "six repetitions",
+    "offline Docker matrix",
+    "mutation replay",
+    "grader loop",
+    "platform-only gates"
+  ]
 }

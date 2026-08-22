@@ -1,0 +1,50 @@
+{
+  "artifact_set_id": "a595f702d9b20654d98a67fd68389c21cf8e6439576725e8ac29aef5e41bbc93",
+  "mutations": [
+    {
+      "id": "M1",
+      "requirements": [
+        "R2"
+      ],
+      "class": "persistence/order",
+      "change": "release background ownership at first barrier",
+      "status": "deferred"
+    },
+    {
+      "id": "M2",
+      "requirements": [
+        "R3"
+      ],
+      "class": "error-contract",
+      "change": "release on transient finish-notifier error",
+      "status": "deferred"
+    },
+    {
+      "id": "M3",
+      "requirements": [
+        "R4"
+      ],
+      "class": "recovery omission",
+      "change": "omit startup catalog reconstruction",
+      "status": "deferred"
+    },
+    {
+      "id": "M4",
+      "requirements": [
+        "R5"
+      ],
+      "class": "boundary",
+      "change": "admit when active equals a reduced limit",
+      "status": "deferred"
+    },
+    {
+      "id": "M5",
+      "requirements": [
+        "R6"
+      ],
+      "class": "cancellation",
+      "change": "retain waiter count after cancellation",
+      "status": "deferred"
+    }
+  ]
+}
