@@ -2,3 +2,4 @@
 {"timestamp": "2026-08-22T04:00:48.037125+00:00", "event": "format-and-isolation-repair", "artifact_set_id": "aaa2d0faf3b47f59ead7aaa6025a234f9883b1f8be65e692cdb04dacf26ef433", "verdict": "IN_PROGRESS"}
 {"timestamp": "2026-08-22T04:22:27.620671+00:00", "event": "docker-runtime-toolchain-repair", "artifact_set_id": "d0c825617de473230b5494f294689c92698b03f60aca9cf6d2cc5c527bf7d596", "verdict": "IN_PROGRESS"}
 {"timestamp": "2026-08-22T04:25:21.127712+00:00", "event": "docker-login-path-repair", "artifact_set_id": "2953ff69877a1da56302e9ac10c7fcf0b77634b2bbfea4eaf01c7c713f869170", "verdict": "IN_PROGRESS"}
+{"timestamp": "2026-08-22T04:40:20.740333+00:00", "event": "docker-cargo-cache-ownership-repair", "artifact_set_id": "cb7a916a729f44b031eb355968812eef62c78accab70b6214766c0703eb0d5ac", "verdict": "IN_PROGRESS"}

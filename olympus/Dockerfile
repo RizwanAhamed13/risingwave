@@ -26,7 +26,7 @@ RUN if id -u model >/dev/null 2>&1; then \
     else \
         useradd --create-home --uid 1000 --shell /bin/bash model; \
     fi \
-    && chown -R model:model /app
+    && chown -R model:model /app /opt/cargo
 
 ENV CARGO_NET_OFFLINE=true \
     HOME=/home/model
