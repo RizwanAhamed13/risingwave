@@ -16,9 +16,9 @@
     "problem.md": "d8b218bdedb9107000d12e499f74fa893721bd722393ac5a063cf12ece5f2f49",
     "test.patch": "8199dd94d4777da84ce1e3db554a5ae8edd6f62ff656536eb98e649ab7ed4d3a",
     "solution.patch": "ad024e26db13ebc62e56617ee06cec74aeb058db5d75d31c960d4509c9854b33",
-    "Dockerfile": "abf3b6fb8a26c40e1e163f17e1264ec4f6013f092129860396c5d0295285005c"
+    "Dockerfile": "f1d7e145b41698ddb6a93fdb9280044ff230dae010e490ab8248fe107e291838"
   },
-  "artifact_set_id": "aaa2d0faf3b47f59ead7aaa6025a234f9883b1f8be65e692cdb04dacf26ef433",
+  "artifact_set_id": "d0c825617de473230b5494f294689c92698b03f60aca9cf6d2cc5c527bf7d596",
   "scope_gate": "skipped under prior explicit user instruction; no hosted PASS claimed",
   "proofs": [],
   "stale_proofs": [
@@ -29,5 +29,5 @@
     }
   ],
   "open_item_count": 1,
-  "last_blocker": "repaired-byte verification pending after formatting"
+  "last_blocker": "runtime toolchain visibility repaired; complete validation pending"
 }
