@@ -11,10 +11,10 @@ index d1ece4c..36ed494 100644
 
  [dependencies]
 diff --git a/src/meta/src/rpc/ddl_controller.rs b/src/meta/src/rpc/ddl_controller.rs
-index f8b82fb..7b5a7ae 100644
+index f8b82fb..64066d2 100644
 --- a/src/meta/src/rpc/ddl_controller.rs
 +++ b/src/meta/src/rpc/ddl_controller.rs
-@@ -2593,6 +2593,167 @@ mod tests {
+@@ -2593,6 +2593,166 @@ mod tests {
 
      use super::*;
 
@@ -171,8 +171,7 @@ index f8b82fb..7b5a7ae 100644
 +        let source = include_str!("ddl_controller.rs");
 +        let start = source.find("pub async fn new(").unwrap();
 +        let tail = &source[start..];
-+        let end = tail.find("
-+    pub fn next_seq(").unwrap();
++        let end = tail.find("    pub fn next_seq(").unwrap();
 +        let constructor = &tail[..end];
 +        assert!(constructor.contains("list_creating_jobs(false, None)"));
 +        assert!(constructor.contains("claim_recovered(job_id)"));
