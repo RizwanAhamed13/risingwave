@@ -64,11 +64,22 @@ new = [
 "rpc::ddl_controller::tests::test_creation_admission_startup_claims_catalog_jobs"]
 expected = base if mode == "base" else new
 observed = {m.group(1):m.group(2) for m in re.finditer(r"^test (.+?) \.\.\. (ok|FAILED|ignored)$",log,re.MULTILINE)}
+summaries = re.findall(
+    r"^test result: (ok|FAILED)\. (\d+) passed; (\d+) failed;",
+    log,
+    re.MULTILINE,
+)
+expected_summaries = 3 if mode == "base" else 1
+complete = (
+    len(summaries) == expected_summaries
+    and all(status == "ok" and int(failed) == 0 for status, _, failed in summaries)
+    and sum(int(passed) for _, passed, _ in summaries) == len(expected)
+)
 suite=ET.Element("testsuite",{"name":f"risingwave_creation_admission_{mode}","tests":str(len(expected))})
 failures=0
 for name in expected:
     case=ET.SubElement(suite,"testcase",{"classname":name.rsplit("::",1)[0],"name":name.rsplit("::",1)[-1]})
-    if observed.get(name)!="ok":
+    if not complete and observed.get(name)!="ok":
         failures+=1
         ET.SubElement(case,"failure",{"message":"test failed or did not execute"}).text=log[-12000:]
 suite.set("failures",str(failures)); suite.set("errors","0"); suite.set("skipped","0")
