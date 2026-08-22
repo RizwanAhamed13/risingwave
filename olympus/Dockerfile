@@ -8,14 +8,10 @@ RUN apt-get update \
        libopenblas-dev liblapack-dev libsasl2-dev \
     && rm -rf /var/lib/apt/lists/*
 
-RUN mv /root/.cargo /opt/cargo \
-    && mv /root/.rustup /opt/rustup
-
-ENV CARGO_HOME=/opt/cargo \
-    RUSTUP_HOME=/opt/rustup \
-    PATH=/opt/cargo/bin:${PATH}
-
-RUN rustup component add rustfmt
+RUN rustup component add rustfmt \
+    && ln -sf "$(command -v cargo)" /usr/local/bin/cargo \
+    && ln -sf "$(command -v rustup)" /usr/local/bin/rustup \
+    && ln -sf "$(command -v rustfmt)" /usr/local/bin/rustfmt
 
 COPY . .
 
@@ -30,7 +26,7 @@ RUN if id -u model >/dev/null 2>&1; then \
     else \
         useradd --create-home --uid 1000 --shell /bin/bash model; \
     fi \
-    && chown -R model:model /app /opt/cargo /opt/rustup
+    && chown -R model:model /app
 
 ENV CARGO_NET_OFFLINE=true \
     HOME=/home/model
