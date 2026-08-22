@@ -14,11 +14,11 @@
   "canonical_artifact_directory": "olympus",
   "artifact_hashes": {
     "problem.md": "d8b218bdedb9107000d12e499f74fa893721bd722393ac5a063cf12ece5f2f49",
-    "test.patch": "f7fa40234b5506914568c42f454b5e414a5a7922bf8db59a99a4b65e9c4035b8",
+    "test.patch": "7294241702ff015741ff4b2463ecd06d2ad42b675d32a0f53b4117c8f32b7bf3",
     "solution.patch": "ad024e26db13ebc62e56617ee06cec74aeb058db5d75d31c960d4509c9854b33",
     "Dockerfile": "78c56ee13e4340076579547d49baa75ed2cd40a72f408850c1cabf2d387c3bc2"
   },
-  "artifact_set_id": "a16977ef764e00944c64ca24d7c27f8ee0e8d8b85d4d4edee81119a752f8597c",
+  "artifact_set_id": "5d10f5a570417d977813c926dbf6de58db161c14564d530cb49cc8e979683ccf",
   "scope_gate": "skipped under prior explicit user instruction; no hosted PASS claimed",
   "proofs": [],
   "stale_proofs": [
@@ -29,5 +29,5 @@
     }
   ],
   "open_item_count": 1,
-  "last_blocker": "RUSTFLAGS override replaced by hidden Cargo feature; complete validation pending"
+  "last_blocker": "base catalog test qualification repaired; complete validation pending"
 }

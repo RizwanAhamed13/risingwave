@@ -25,8 +25,8 @@ feature_args=()
 if [[ "$mode" == "base" ]]; then
     filters=(
         "rpc::ddl_controller::tests::test_validate_specified_parallelism"
-        "controller::catalog::test::test_foreground_creating_catalog_lifecycle"
-        "controller::catalog::test::test_cancel_creating_job_includes_belonging_streaming_jobs"
+        "controller::catalog::test::tests::test_foreground_creating_catalog_lifecycle"
+        "controller::catalog::test::tests::test_cancel_creating_job_includes_belonging_streaming_jobs"
     )
 else
     feature_args=(--features rw_full_lifecycle_admission_tests)
@@ -49,8 +49,8 @@ base = [
 "rpc::ddl_controller::tests::test_validate_specified_parallelism_accepts_within_max",
 "rpc::ddl_controller::tests::test_validate_specified_parallelism_rejects_parallelism_over_max",
 "rpc::ddl_controller::tests::test_validate_specified_parallelism_rejects_backfill_parallelism_over_max",
-"controller::catalog::test::test_foreground_creating_catalog_lifecycle",
-"controller::catalog::test::test_cancel_creating_job_includes_belonging_streaming_jobs"]
+"controller::catalog::test::tests::test_foreground_creating_catalog_lifecycle",
+"controller::catalog::test::tests::test_cancel_creating_job_includes_belonging_streaming_jobs"]
 new = [
 "rpc::ddl_controller::tests::test_creation_admission_limit_reduction_is_drain_only",
 "rpc::ddl_controller::tests::test_creation_admission_recovery_can_start_over_limit",
