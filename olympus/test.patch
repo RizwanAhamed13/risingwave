@@ -1,15 +1,17 @@
 diff --git a/src/meta/src/rpc/ddl_controller.rs b/src/meta/src/rpc/ddl_controller.rs
-index f8b82fb..ab63d8c 100644
+index f8b82fb..21b18fd 100644
 --- a/src/meta/src/rpc/ddl_controller.rs
 +++ b/src/meta/src/rpc/ddl_controller.rs
-@@ -2593,6 +2593,155 @@ mod tests {
+@@ -2593,6 +2593,164 @@ mod tests {
  
      use super::*;
  
 +    #[cfg(rw_full_lifecycle_admission_tests)]
 +    async fn wait_for_admission_state(mut predicate: impl FnMut() -> bool) {
 +        for _ in 0..4096 {
-+            if predicate() { return; }
++            if predicate() {
++                return;
++            }
 +            tokio::task::yield_now().await;
 +        }
 +        assert!(predicate(), "admission state did not converge");
@@ -53,78 +55,81 @@ index f8b82fb..ab63d8c 100644
 +        let admission = Arc::new(CreatingStreamingJobPermit::with_limit(1));
 +        let first = admission.acquire_job(JobId::new(20)).await;
 +        let waiting = admission.clone();
-+        let waiter=tokio::spawn(async move { waiting.acquire_job(JobId::new(21)).await });
-+        wait_for_admission_state(|| admission.stats().waiting==1).await;
-+        assert_eq!(admission.stats().active,1);
++        let waiter = tokio::spawn(async move { waiting.acquire_job(JobId::new(21)).await });
++        wait_for_admission_state(|| admission.stats().waiting == 1).await;
++        assert_eq!(admission.stats().active, 1);
 +        drop(first);
 +        wait_for_admission_state(|| waiter.is_finished()).await;
-+        let second=waiter.await.unwrap();
-+        assert_eq!(admission.stats().waiting,0);
-+        assert_eq!(admission.stats().active,1);
++        let second = waiter.await.unwrap();
++        assert_eq!(admission.stats().waiting, 0);
++        assert_eq!(admission.stats().active, 1);
 +        drop(second);
 +    }
 +
 +    #[cfg(rw_full_lifecycle_admission_tests)]
 +    #[tokio::test]
 +    async fn test_creation_admission_limit_increase_wakes_waiter() {
-+        let admission=Arc::new(CreatingStreamingJobPermit::with_limit(1));
-+        let first=admission.acquire_job(JobId::new(30)).await;
-+        let waiting=admission.clone();
-+        let waiter=tokio::spawn(async move { waiting.acquire_job(JobId::new(31)).await });
-+        wait_for_admission_state(|| admission.stats().waiting==1).await;
++        let admission = Arc::new(CreatingStreamingJobPermit::with_limit(1));
++        let first = admission.acquire_job(JobId::new(30)).await;
++        let waiting = admission.clone();
++        let waiter = tokio::spawn(async move { waiting.acquire_job(JobId::new(31)).await });
++        wait_for_admission_state(|| admission.stats().waiting == 1).await;
 +        admission.set_limit(2);
 +        wait_for_admission_state(|| waiter.is_finished()).await;
-+        let second=waiter.await.unwrap();
-+        assert_eq!(admission.stats().active,2);
-+        drop(first); drop(second);
++        let second = waiter.await.unwrap();
++        assert_eq!(admission.stats().active, 2);
++        drop(first);
++        drop(second);
 +    }
 +
 +    #[cfg(rw_full_lifecycle_admission_tests)]
 +    #[tokio::test]
 +    async fn test_creation_admission_cancelled_waiter_is_not_leaked() {
-+        let admission=Arc::new(CreatingStreamingJobPermit::with_limit(1));
-+        let _first=admission.acquire_job(JobId::new(40)).await;
-+        let waiting=admission.clone();
-+        let waiter=tokio::spawn(async move { waiting.acquire_job(JobId::new(41)).await });
-+        wait_for_admission_state(|| admission.stats().waiting==1).await;
++        let admission = Arc::new(CreatingStreamingJobPermit::with_limit(1));
++        let _first = admission.acquire_job(JobId::new(40)).await;
++        let waiting = admission.clone();
++        let waiter = tokio::spawn(async move { waiting.acquire_job(JobId::new(41)).await });
++        wait_for_admission_state(|| admission.stats().waiting == 1).await;
 +        waiter.abort();
-+        let result=waiter.await;
++        let result = waiter.await;
 +        assert!(matches!(result,Err(err) if err.is_cancelled()));
-+        assert_eq!(admission.stats().waiting,0);
-+        assert_eq!(admission.stats().active,1);
++        assert_eq!(admission.stats().waiting, 0);
++        assert_eq!(admission.stats().active, 1);
 +    }
 +
 +    #[cfg(rw_full_lifecycle_admission_tests)]
 +    #[test]
 +    fn test_creation_admission_anonymous_and_job_share_capacity() {
-+        let admission=Arc::new(CreatingStreamingJobPermit::with_limit(1));
-+        let anonymous=admission.try_acquire_inner(None).unwrap();
++        let admission = Arc::new(CreatingStreamingJobPermit::with_limit(1));
++        let anonymous = admission.try_acquire_inner(None).unwrap();
 +        assert!(admission.try_acquire_job(JobId::new(50)).is_none());
-+        assert_eq!(admission.stats().tracked_jobs,0);
++        assert_eq!(admission.stats().tracked_jobs, 0);
 +        drop(anonymous);
-+        let job=admission.try_acquire_job(JobId::new(50)).unwrap();
-+        assert_eq!(admission.stats().tracked_jobs,1);
++        let job = admission.try_acquire_job(JobId::new(50)).unwrap();
++        assert_eq!(admission.stats().tracked_jobs, 1);
 +        drop(job);
 +    }
 +
 +    #[cfg(rw_full_lifecycle_admission_tests)]
 +    #[test]
 +    fn test_creation_admission_zero_limit_means_unlimited() {
-+        let admission=Arc::new(CreatingStreamingJobPermit::with_limit(0));
-+        let mut permits=Vec::new();
-+        for id in 100..228 { permits.push(admission.try_acquire_job(JobId::new(id)).unwrap()); }
-+        assert_eq!(admission.stats().active,128);
++        let admission = Arc::new(CreatingStreamingJobPermit::with_limit(0));
++        let mut permits = Vec::new();
++        for id in 100..228 {
++            permits.push(admission.try_acquire_job(JobId::new(id)).unwrap());
++        }
++        assert_eq!(admission.stats().active, 128);
 +        drop(permits);
-+        assert_eq!(admission.stats().active,0);
++        assert_eq!(admission.stats().active, 0);
 +    }
 +
 +    #[cfg(rw_full_lifecycle_admission_tests)]
 +    #[test]
 +    fn test_creation_admission_background_ownership_is_transferred() {
-+        let source=include_str!("../stream/stream_manager.rs");
-+        let start=source.find("CreateType::Background => {").unwrap();
-+        let end=source[start..].find("CreateType::Foreground => {").unwrap()+start;
-+        let background=&source[start..end];
++        let source = include_str!("../stream/stream_manager.rs");
++        let start = source.find("CreateType::Background => {").unwrap();
++        let end = source[start..].find("CreateType::Foreground => {").unwrap() + start;
++        let background = &source[start..end];
 +        assert!(background.contains(".take_permit(job_id)"));
 +        assert!(background.contains(".track_creating_job_permit("));
 +    }
@@ -132,11 +137,15 @@ index f8b82fb..ab63d8c 100644
 +    #[cfg(rw_full_lifecycle_admission_tests)]
 +    #[test]
 +    fn test_creation_admission_tracker_retries_transient_errors() {
-+        let source=include_str!("../stream/stream_manager.rs");
-+        let start=source.find("pub(crate) fn track_creating_job_permit").unwrap();
-+        let tail=&source[start..];
-+        let end=tail.find("async fn provision_serverless_backfill_resource_group").unwrap();
-+        let tracker=&tail[..end];
++        let source = include_str!("../stream/stream_manager.rs");
++        let start = source
++            .find("pub(crate) fn track_creating_job_permit")
++            .unwrap();
++        let tail = &source[start..];
++        let end = tail
++            .find("async fn provision_serverless_backfill_resource_group")
++            .unwrap();
++        let tracker = &tail[..end];
 +        assert!(tracker.contains("wait_streaming_job_finished"));
 +        assert!(tracker.contains("is_catalog_id_not_found"));
 +        assert!(tracker.contains("Err(err) =>"));
@@ -147,9 +156,9 @@ index f8b82fb..ab63d8c 100644
 +    #[cfg(rw_full_lifecycle_admission_tests)]
 +    #[test]
 +    fn test_creation_admission_startup_claims_catalog_jobs() {
-+        let source=include_str!("ddl_controller.rs");
-+        let start=source.find("pub async fn new(").unwrap();
-+        let constructor=&source[start..];
++        let source = include_str!("ddl_controller.rs");
++        let start = source.find("pub async fn new(").unwrap();
++        let constructor = &source[start..];
 +        assert!(constructor.contains("list_creating_jobs(false, None)"));
 +        assert!(constructor.contains("claim_recovered(job_id)"));
 +        assert!(constructor.contains("track_creating_job_permit(database_id, job_id, permit)"));
