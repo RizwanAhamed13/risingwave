@@ -21,7 +21,7 @@ mkdir -p "$(dirname "$output_path")"
 log_file="$(mktemp)"
 trap 'rm -f "$log_file"' EXIT
 target_dir="${CARGO_TARGET_DIR:-/tmp/risingwave-admission-${mode}}"
-cfg_flags="--check-cfg=cfg(rw_full_lifecycle_admission_tests)"
+feature_args=()
 if [[ "$mode" == "base" ]]; then
     filters=(
         "rpc::ddl_controller::tests::test_validate_specified_parallelism"
@@ -29,13 +29,13 @@ if [[ "$mode" == "base" ]]; then
         "controller::catalog::test::test_cancel_creating_job_includes_belonging_streaming_jobs"
     )
 else
-    cfg_flags="--cfg rw_full_lifecycle_admission_tests --check-cfg=cfg(rw_full_lifecycle_admission_tests)"
+    feature_args=(--features rw_full_lifecycle_admission_tests)
     filters=("rpc::ddl_controller::tests::test_creation_admission_")
 fi
 overall=0
 for filter in "${filters[@]}"; do
     printf 'running filter: %s\n' "$filter" | tee -a "$log_file"
-    RUSTFLAGS="$cfg_flags" CARGO_TARGET_DIR="$target_dir" cargo test --locked -p risingwave_meta --lib "$filter" -- --nocapture 2>&1 | tee -a "$log_file"
+    CARGO_TARGET_DIR="$target_dir" cargo test --locked -p risingwave_meta --lib "${feature_args[@]}" "$filter" -- --nocapture 2>&1 | tee -a "$log_file"
     status=${PIPESTATUS[0]}
     ((status == 0)) || overall=1
 done
